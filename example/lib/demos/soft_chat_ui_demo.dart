@@ -15,7 +15,8 @@ import 'package:cupertino_native_better/cupertino_native_better.dart'
         CNSymbol,
         LiquidGlassConfig,
         LiquidGlassContainer;
-import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoTheme;
+import 'package:flutter/cupertino.dart'
+    show CupertinoIcons, CupertinoPageRoute, CupertinoTheme;
 import 'package:flutter/material.dart';
 
 /// A real-world screen, ported verbatim from the `soft_chat_ui` sample: an
@@ -594,6 +595,7 @@ class ChatTopBar extends StatefulWidget {
     required this.onMenu,
     required this.onNewChat,
     required this.onMore,
+    this.onDetails,
     this.liquid = true,
     this.modalBehavior = TopBarModalBehavior.swapToSoft,
     this.debugForceSoft = false,
@@ -602,6 +604,11 @@ class ChatTopBar extends StatefulWidget {
   final VoidCallback onMenu;
   final VoidCallback onNewChat;
   final VoidCallback onMore;
+
+  /// Adds an `info.circle` button to the pill, between new chat and more.
+  /// The demo pushes [ChatDetailsPage] from it — a page route, which is what
+  /// drives this bar's `secondaryAnimation` and so its swap to soft.
+  final VoidCallback? onDetails;
 
   /// Render the three controls as iOS 26 Liquid Glass platform views
   /// ([CNButton.icon] + [CNGlassButtonGroup]) instead of the soft surfaces.
@@ -642,6 +649,18 @@ class _ChatTopBarState extends State<ChatTopBar> {
   /// route — a `CupertinoSheetRoute` among them — pushes or pops over us.
   Animation<double>? _secondaryAnim;
   bool _routeOver = false;
+
+  /// `CNTabBarRouteObserver.modalDepth` when this bar mounted — the narrow
+  /// counter, routes whose type name contains `Sheet`. Same gate as
+  /// [_mountDepth], so a bar inside a sheet ignores the sheet it is in.
+  int _mountSheetDepth = 0;
+
+  /// A *sheet* route is what is over us: [_routeOver], and a `Sheet` route
+  /// newer than [_mountSheetDepth] was pushed while it was. Latched until
+  /// [_secondaryAnim] is dismissed, because the observer decrements
+  /// `modalDepth` in `didPop` — when the pop *starts* — and the sheet is
+  /// still sliding down over a scaled page for the whole reverse animation.
+  bool _sheetOver = false;
 
   /// Depth only: any modal newer than [_mountDepth] is up, wherever it is.
   bool _anyModalAbove = false;
@@ -696,7 +715,13 @@ class _ChatTopBarState extends State<ChatTopBar> {
     // hamburger to pill) shows settled as well as mid-slide. Popup sheets
     // never drive `secondaryAnimation`, so the attachment sheet keeps glass.
     // if (_pageAnimating) return true;
-    if (_routeOver) return true;
+    //
+    // Narrowed again to sheets only. A plain `CupertinoPageRoute` drives the
+    // same `secondaryAnimation`, but it only slides this page sideways, and
+    // with the glass painted last there is nothing for an overlay to land
+    // on wrong — so the bar keeps its glass through an ordinary push. The
+    // band needs the sheet's *scale* transform on the page behind it.
+    if (_sheetOver) return true;
     switch (widget.modalBehavior) {
       case TopBarModalBehavior.keepGlass:
       case TopBarModalBehavior.hideToGap:
@@ -722,6 +747,8 @@ class _ChatTopBarState extends State<ChatTopBar> {
   void initState() {
     super.initState();
     _mountDepth = CNTabBarRouteObserver.anyModalDepth.value;
+    _mountSheetDepth = CNTabBarRouteObserver.modalDepth.value;
+    CNTabBarRouteObserver.modalDepth.addListener(_onSheetDepthChanged);
     CNTabBarRouteObserver.anyModalDepth.addListener(_onModalStateChanged);
     CNTabBarRouteObserver.topModalRect.addListener(_onModalStateChanged);
   }
@@ -738,6 +765,7 @@ class _ChatTopBarState extends State<ChatTopBar> {
       _secondaryAnim?.addStatusListener(_onSecondaryStatus);
       // Assigned rather than setState'd: build runs right after this.
       _routeOver = _isOver(anim);
+      _sheetOver = _routeOver && _sheetAbove;
     }
 
     final primary = route?.animation;
@@ -759,6 +787,7 @@ class _ChatTopBarState extends State<ChatTopBar> {
   void dispose() {
     _primaryAnim?.removeStatusListener(_onPrimaryStatus);
     _secondaryAnim?.removeStatusListener(_onSecondaryStatus);
+    CNTabBarRouteObserver.modalDepth.removeListener(_onSheetDepthChanged);
     CNTabBarRouteObserver.anyModalDepth.removeListener(_onModalStateChanged);
     CNTabBarRouteObserver.topModalRect.removeListener(_onModalStateChanged);
     super.dispose();
@@ -773,10 +802,28 @@ class _ChatTopBarState extends State<ChatTopBar> {
       (anim.status == AnimationStatus.forward ||
           anim.status == AnimationStatus.reverse);
 
+  bool get _sheetAbove =>
+      CNTabBarRouteObserver.modalDepth.value > _mountSheetDepth;
+
   void _onSecondaryStatus(AnimationStatus _) {
     if (!mounted) return;
     final next = _isOver(_secondaryAnim);
-    if (next != _routeOver) setState(() => _routeOver = next);
+    // Dismissed clears the latch; anything else can only set it. On a push
+    // this usually fires *before* the observer's didPush has bumped
+    // `modalDepth` (the transition starts first), which is why
+    // [_onSheetDepthChanged] can set it too.
+    final nextSheet = next && (_sheetOver || _sheetAbove);
+    if (next != _routeOver || nextSheet != _sheetOver) {
+      setState(() {
+        _routeOver = next;
+        _sheetOver = nextSheet;
+      });
+    }
+  }
+
+  void _onSheetDepthChanged() {
+    if (!mounted || _sheetOver || !_routeOver || !_sheetAbove) return;
+    setState(() => _sheetOver = true);
   }
 
   void _onModalStateChanged() {
@@ -893,6 +940,17 @@ class _ChatTopBarState extends State<ChatTopBar> {
             minHeight: ChatTopBar._controlSize,
           ),
         ),
+        if (widget.onDetails != null)
+          CNButtonData.icon(
+            icon: const CNSymbol('info.circle', size: 18),
+            onPressed: widget.onDetails,
+            config: const CNButtonDataConfig(
+              style: CNButtonStyle.glass,
+              glassEffectUnionId: ChatTopBar._unionId,
+              width: ChatTopBar._controlSize,
+              minHeight: ChatTopBar._controlSize,
+            ),
+          ),
         CNButtonData.icon(
           icon: const CNSymbol('ellipsis', size: 18),
           onPressed: widget.onMore,
@@ -917,12 +975,15 @@ class _ChatTopBarState extends State<ChatTopBar> {
   static const double _softMenuIconSize = 27;
   static const double _softPillIconSize = 22;
 
-  /// The glass group's slot: `count * 44 + spacing + 6` wide (see
-  /// [_liquidPill]) and `minHeight + 3` tall. The capsule is *not* centred
+  /// The glass group's slot: `count * 44 + (count - 1) * spacing + 6` wide
+  /// (see [_liquidPill]) and `minHeight + 3` tall. The capsule is *not* centred
   /// in it — measured, it hugs the slot's leading edge and bottom, leaving
   /// ~5 pt spare on the trailing side — so the soft pill copies that. Reserving the same
   /// box keeps the pill from shifting on swap.
-  static const Size _glassPillSlot = Size(2 * 44 + 4 + 6, 44 + 3);
+  Size get _glassPillSlot {
+    final count = widget.onDetails == null ? 2 : 3;
+    return Size(count * 44 + (count - 1) * 4 + 6, 44 + 3);
+  }
 
   /// Re-skins the soft controls as the glass they stand in for, so the swap
   /// reads as the same control rather than a different style. Scoped to the
@@ -979,7 +1040,7 @@ class _ChatTopBarState extends State<ChatTopBar> {
         child: SoftIconPill(
           // Same 44 + 4 + 44 run as the glass group (`spacing: 4`), so the
           // icons sit 48 pt apart like the glass ones; with the border it
-          // lands on the glass capsule's measured ~94 pt.
+          // lands on the glass capsule's measured ~94 pt (two buttons).
           horizontalPadding: 0,
           spacing: 4,
           iconSize: _softPillIconSize,
@@ -989,6 +1050,12 @@ class _ChatTopBarState extends State<ChatTopBar> {
               semanticLabel: 'New chat',
               onPressed: widget.onNewChat,
             ),
+            if (widget.onDetails != null)
+              SoftIconPillAction(
+                icon: CupertinoIcons.info_circle,
+                semanticLabel: 'Chat details',
+                onPressed: widget.onDetails,
+              ),
             SoftIconPillAction(
               icon: CupertinoIcons.ellipsis,
               semanticLabel: 'More options',
@@ -1630,7 +1697,7 @@ class _ChatScreenState extends State<ChatScreen> {
   /// fires once it settles — but nothing fires during the slide. If the grey
   /// overlay band shows here too, the cause is not the host-page transform
   /// and the swap needs the depth-only trigger instead of this page's
-  /// `_covered || _routeOver`.
+  /// `_covered || _sheetOver`.
   void _showVoiceSheet() {
     final theme = Theme.of(context);
     CNBottomSheet.show(
@@ -1645,6 +1712,22 @@ class _ChatScreenState extends State<ChatScreen> {
           heightFactor: 1,
           options: AttachmentSheet.voiceOptions,
         ),
+      ),
+    );
+  }
+
+  /// Pushes [ChatDetailsPage] as an ordinary page.
+  ///
+  /// The counterpart to [_showStyleGuide]: a `CupertinoPageRoute` slides
+  /// this page out to the left instead of scaling it, but it drives the same
+  /// `secondaryAnimation`, so the top bar swaps to soft for the push, stays
+  /// soft while the details page is up, and returns to glass once the pop
+  /// settles. Same cross-route [Theme] capture as the sheets.
+  void _openDetails() {
+    final theme = Theme.of(context);
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => Theme(data: theme, child: const ChatDetailsPage()),
       ),
     );
   }
@@ -1762,9 +1845,62 @@ class _ChatScreenState extends State<ChatScreen> {
               onMenu: () => Navigator.of(context).maybePop(),
               onNewChat: () {},
               onMore: () {},
+              onDetails: _openDetails,
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Pushed from the top bar's info button. Deliberately platform-view-free,
+/// so anything odd during the push or pop comes from the chat page's glass.
+class ChatDetailsPage extends StatelessWidget {
+  const ChatDetailsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final soft = context.soft;
+    final body = TextStyle(fontSize: 17, height: 1.45, color: soft.foreground);
+    final muted = TextStyle(fontSize: 15, color: soft.mutedForeground);
+
+    return Scaffold(
+      backgroundColor: soft.background,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SoftCircularButton(
+                icon: CupertinoIcons.chevron_left,
+                semanticLabel: 'Back',
+                onPressed: () => Navigator.of(context).maybePop(),
+                size: 44,
+                iconSize: 22,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Chat details',
+                style: body.copyWith(fontSize: 28, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'soft_circular_ui_style_guide.md · 3 messages',
+                style: muted,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Pushed with a CupertinoPageRoute. Watch the chat page\'s top '
+                'bar on the way in and back out: it should swap to the soft '
+                'controls for the whole time this page covers it, with no '
+                'grey band, and come back as glass once the pop settles.',
+                style: body,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1793,6 +1929,7 @@ class SoftTopBarCompareProbe extends StatelessWidget {
       onMenu: () {},
       onNewChat: () {},
       onMore: () {},
+      onDetails: () {},
     );
 
     return Theme(
