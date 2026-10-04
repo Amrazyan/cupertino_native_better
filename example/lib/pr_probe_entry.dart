@@ -15,6 +15,10 @@
 //     --dart-define=PROBE=pr72 --dart-define=SCENARIO=collapse --dart-define=LABEL=before
 //   (SCENARIO: resize | collapse | zero | offscreen | detach; the page auto-toggles.)
 //
+//   flutter run -t lib/pr_probe_entry.dart --dart-define=PROBE=softbar
+//   (soft chat top bar: Liquid Glass row above its soft fallback row, to
+//   compare icon glyphs and footprints.)
+//
 // PROBE=pr67report additionally dumps the MAE/cost table to the run log.
 
 import 'package:flutter/cupertino.dart';
@@ -24,6 +28,7 @@ import 'demos/pr66_glass_image_asset_tint_test.dart';
 import 'demos/pr67_icon_supersample_test.dart';
 import 'demos/pr69_glass_effect_test.dart';
 import 'demos/pr72_glass_resize_test.dart';
+import 'demos/soft_chat_ui_demo.dart';
 
 const String _probe = String.fromEnvironment('PROBE', defaultValue: 'pr67');
 const String _backdrop = String.fromEnvironment(
@@ -76,6 +81,12 @@ class _ProbeApp extends StatelessWidget {
   }
 
   Widget _home() {
+    if (_probe == 'softbar') {
+      return SoftTopBarCompareProbe(
+        dark: _brightness == 'dark',
+        label: _label,
+      );
+    }
     if (_probe.startsWith('pr66')) {
       return Pr66GlassImageAssetTintTestPage(
         initialBackdrop: _backdrop,

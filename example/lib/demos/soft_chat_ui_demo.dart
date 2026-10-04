@@ -1,3 +1,5 @@
+import 'dart:ui' show lerpDouble;
+
 import 'package:cupertino_native_better/cupertino_native_better.dart'
     show
         CNBottomSheet,
@@ -13,7 +15,7 @@ import 'package:cupertino_native_better/cupertino_native_better.dart'
         CNSymbol,
         LiquidGlassConfig,
         LiquidGlassContainer;
-import 'package:flutter/cupertino.dart' show CupertinoTheme;
+import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoTheme;
 import 'package:flutter/material.dart';
 
 /// A real-world screen, ported verbatim from the `soft_chat_ui` sample: an
@@ -206,6 +208,8 @@ class SoftControlTheme extends ThemeExtension<SoftControlTheme> {
     required this.shadow,
     required this.foreground,
     required this.mutedForeground,
+    this.shadowBlur = 4,
+    this.shadowDy = 2,
   });
 
   const SoftControlTheme.light()
@@ -216,7 +220,9 @@ class SoftControlTheme extends ThemeExtension<SoftControlTheme> {
       borderDisabled = const Color(0xFFE6E6E6),
       shadow = const Color(0x10000000),
       foreground = const Color(0xFF111111),
-      mutedForeground = const Color(0xFF8C8C8C);
+      mutedForeground = const Color(0xFF8C8C8C),
+      shadowBlur = 4,
+      shadowDy = 2;
 
   /// Derived counterpart to [SoftControlTheme.light] — see the deviation note
   /// on [SoftChatUiDemoPage]. Surfaces are raised off the background instead
@@ -231,7 +237,9 @@ class SoftControlTheme extends ThemeExtension<SoftControlTheme> {
       borderDisabled = const Color(0xFF262626),
       shadow = const Color(0x33000000),
       foreground = const Color(0xFFF2F2F2),
-      mutedForeground = const Color(0xFF9A9A9A);
+      mutedForeground = const Color(0xFF9A9A9A),
+      shadowBlur = 4,
+      shadowDy = 2;
 
   final Color background;
   final Color surface;
@@ -241,6 +249,12 @@ class SoftControlTheme extends ThemeExtension<SoftControlTheme> {
   final Color shadow;
   final Color foreground;
   final Color mutedForeground;
+
+  /// Resting shadow geometry. Pressed halves both (4/2 → 2/1, the guide's
+  /// values), which is why they are tokens rather than literals: the glass
+  /// stand-ins in [ChatTopBar] need a much wider, lower shadow.
+  final double shadowBlur;
+  final double shadowDy;
 
   @override
   SoftControlTheme copyWith({
@@ -252,6 +266,8 @@ class SoftControlTheme extends ThemeExtension<SoftControlTheme> {
     Color? shadow,
     Color? foreground,
     Color? mutedForeground,
+    double? shadowBlur,
+    double? shadowDy,
   }) {
     return SoftControlTheme(
       background: background ?? this.background,
@@ -262,6 +278,8 @@ class SoftControlTheme extends ThemeExtension<SoftControlTheme> {
       shadow: shadow ?? this.shadow,
       foreground: foreground ?? this.foreground,
       mutedForeground: mutedForeground ?? this.mutedForeground,
+      shadowBlur: shadowBlur ?? this.shadowBlur,
+      shadowDy: shadowDy ?? this.shadowDy,
     );
   }
 
@@ -277,6 +295,8 @@ class SoftControlTheme extends ThemeExtension<SoftControlTheme> {
       shadow: Color.lerp(shadow, other.shadow, t)!,
       foreground: Color.lerp(foreground, other.foreground, t)!,
       mutedForeground: Color.lerp(mutedForeground, other.mutedForeground, t)!,
+      shadowBlur: lerpDouble(shadowBlur, other.shadowBlur, t)!,
+      shadowDy: lerpDouble(shadowDy, other.shadowDy, t)!,
     );
   }
 }
@@ -331,8 +351,11 @@ class SoftSurface extends StatelessWidget {
             ? [
                 BoxShadow(
                   color: soft.shadow,
-                  blurRadius: pressed ? 2 : 4,
-                  offset: Offset(0, pressed ? 1 : 2),
+                  blurRadius: pressed ? soft.shadowBlur / 2 : soft.shadowBlur,
+                  offset: Offset(
+                    0,
+                    pressed ? soft.shadowDy / 2 : soft.shadowDy,
+                  ),
                 ),
               ]
             : null,
@@ -498,22 +521,31 @@ class SoftIconPill extends StatelessWidget {
     required this.actions,
     this.height = 44,
     this.iconSize = 18,
+    this.horizontalPadding = 6,
+    this.spacing = 0,
   });
 
   final List<SoftIconPillAction> actions;
   final double height;
   final double iconSize;
 
+  /// Inset between the stadium's ends and the first/last tap target.
+  final double horizontalPadding;
+
+  /// Gap between adjacent tap targets.
+  final double spacing;
+
   @override
   Widget build(BuildContext context) {
     return SoftSurface(
       height: height,
       radius: height / 2,
-      padding: const EdgeInsets.symmetric(horizontal: 6),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (final action in actions)
+          for (final (i, action) in actions.indexed) ...[
+            if (i > 0) SizedBox(width: spacing),
             SoftIconTap(
               icon: action.icon,
               semanticLabel: action.semanticLabel,
@@ -521,6 +553,7 @@ class SoftIconPill extends StatelessWidget {
               size: iconSize,
               tapTarget: height,
             ),
+          ],
         ],
       ),
     );
@@ -563,6 +596,7 @@ class ChatTopBar extends StatefulWidget {
     required this.onMore,
     this.liquid = true,
     this.modalBehavior = TopBarModalBehavior.swapToSoft,
+    this.debugForceSoft = false,
   });
 
   final VoidCallback onMenu;
@@ -577,6 +611,11 @@ class ChatTopBar extends StatefulWidget {
   /// What happens to those platform views when a sheet covers them. Ignored
   /// when [liquid] is false — there is no platform view to hide.
   final TopBarModalBehavior modalBehavior;
+
+  /// Pin a [liquid] bar in its swapped-to-soft state, glass-matched tokens
+  /// and all, so a screenshot can set it beside the glass it replaces
+  /// (`PROBE=softbar`). Not a mode for real use.
+  final bool debugForceSoft;
 
   /// 44 pt to match [SoftCircularButton]'s size in the soft branch, and the
   /// 44 pt the group's own width formula assumes per button.
@@ -602,7 +641,7 @@ class _ChatTopBarState extends State<ChatTopBar> {
   /// The host route's `secondaryAnimation`, which runs while a page-style
   /// route — a `CupertinoSheetRoute` among them — pushes or pops over us.
   Animation<double>? _secondaryAnim;
-  bool _routeAnimating = false;
+  bool _routeOver = false;
 
   /// Depth only: any modal newer than [_mountDepth] is up, wherever it is.
   bool _anyModalAbove = false;
@@ -624,10 +663,10 @@ class _ChatTopBarState extends State<ChatTopBar> {
   /// Swapping on the animation as well means the views are already gone
   /// before the first animated frame.
   bool get _useSoft {
-    if (!widget.liquid) return true;
+    if (!widget.liquid || widget.debugForceSoft) return true;
     // Ahead of the modalBehavior switch and not configurable, covering both
     // of this route's animations: `_pageAnimating` is the page's own push and
-    // pop, `_routeAnimating` is another route animating over it. Neither is a
+    // pop, `_routeOver` is another route animating over it or open on it. Neither is a
     // modal concern, and neither is a trade-off — a platform view mounted
     // through a route animation is simply broken, in two different ways we
     // hit this session:
@@ -648,8 +687,16 @@ class _ChatTopBarState extends State<ChatTopBar> {
     // transform a slice lands in the wrong place and is filled with
     // background. Anything mounted is enough to trigger it, wherever it sits.
     // Scaffold vs CupertinoPageScaffold was ruled out separately.
-    // DISABLED while testing whether the paint-order fix stands on its own.
-    // if (_pageAnimating || _routeAnimating) return true;
+    // The page's own transition stays disabled while testing whether the
+    // paint-order fix stands on its own. A route *over* us is not covered by
+    // paint order — the sheet has to paint above the glass — so that half is
+    // back on, and widened from "animating" to "not dismissed":
+    // `CupertinoSheetRoute` keeps this page scaled behind it for as long as
+    // it is open, and the grey band (the union of both platform views,
+    // hamburger to pill) shows settled as well as mid-slide. Popup sheets
+    // never drive `secondaryAnimation`, so the attachment sheet keeps glass.
+    // if (_pageAnimating) return true;
+    if (_routeOver) return true;
     switch (widget.modalBehavior) {
       case TopBarModalBehavior.keepGlass:
       case TopBarModalBehavior.hideToGap:
@@ -690,7 +737,7 @@ class _ChatTopBarState extends State<ChatTopBar> {
       _secondaryAnim = anim;
       _secondaryAnim?.addStatusListener(_onSecondaryStatus);
       // Assigned rather than setState'd: build runs right after this.
-      _routeAnimating = _isAnimating(anim);
+      _routeOver = _isOver(anim);
     }
 
     final primary = route?.animation;
@@ -717,6 +764,10 @@ class _ChatTopBarState extends State<ChatTopBar> {
     super.dispose();
   }
 
+  /// A page-style route is over this one — pushing, open, or popping.
+  static bool _isOver(Animation<double>? anim) =>
+      anim != null && anim.status != AnimationStatus.dismissed;
+
   static bool _isAnimating(Animation<double>? anim) =>
       anim != null &&
       (anim.status == AnimationStatus.forward ||
@@ -724,8 +775,8 @@ class _ChatTopBarState extends State<ChatTopBar> {
 
   void _onSecondaryStatus(AnimationStatus _) {
     if (!mounted) return;
-    final next = _isAnimating(_secondaryAnim);
-    if (next != _routeAnimating) setState(() => _routeAnimating = next);
+    final next = _isOver(_secondaryAnim);
+    if (next != _routeOver) setState(() => _routeOver = next);
   }
 
   void _onModalStateChanged() {
@@ -800,9 +851,9 @@ class _ChatTopBarState extends State<ChatTopBar> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           child: Row(
             children: [
-              if (useSoft) _softMenu() else _liquidMenu(),
+              if (useSoft) _glassMatched(_softMenu()) else _liquidMenu(),
               const Spacer(),
-              if (useSoft) _softPill() else _liquidPill(),
+              if (useSoft) _glassMatched(_softPill()) else _liquidPill(),
             ],
           ),
         ),
@@ -856,29 +907,96 @@ class _ChatTopBarState extends State<ChatTopBar> {
     );
   }
 
+  // The soft controls stand in for the glass ones mid-sheet, so they copy
+  // the glass row's glyphs and footprint rather than the soft style's own
+  // defaults: CupertinoIcons are the SF Symbol set the native side draws
+  // (`line.3.horizontal`, `square.and.pencil`, `ellipsis`), and the sizes
+  // below were matched against a simulator screenshot of both rows
+  // (`PROBE=softbar` in pr_probe_entry.dart), not derived — SF Symbols and
+  // the icon font scale differently for the same nominal point size.
+  static const double _softMenuIconSize = 27;
+  static const double _softPillIconSize = 22;
+
+  /// The glass group's slot: `count * 44 + spacing + 6` wide (see
+  /// [_liquidPill]) and `minHeight + 3` tall. The capsule is *not* centred
+  /// in it — measured, it hugs the slot's leading edge and bottom, leaving
+  /// ~5 pt spare on the trailing side — so the soft pill copies that. Reserving the same
+  /// box keeps the pill from shifting on swap.
+  static const Size _glassPillSlot = Size(2 * 44 + 4 + 6, 44 + 3);
+
+  /// Re-skins the soft controls as the glass they stand in for, so the swap
+  /// reads as the same control rather than a different style. Scoped to the
+  /// liquid bar: with `liquid: false` the soft style is the design, not a
+  /// stand-in, and keeps its own tokens.
+  ///
+  /// Values sampled from simulator screenshots of the glass row (iOS 26.2,
+  /// `PROBE=softbar`):
+  ///  * light — fill FDFDFD on the white page, a pure-white rim (so no
+  ///    visible border), and a wide, low shadow: ~5% black at the bottom
+  ///    edge, ~2% at the top, gone ~30 pt below.
+  ///  * dark — fill 161616 on 0D0D0D, a ~1 pt rim peaking near 303030 and fading inward (drawn as a flat 2C2C2C), and no shadow
+  ///    that reads against the near-black page.
+  Widget _glassMatched(Widget child) {
+    if (!widget.liquid) return child;
+    final theme = Theme.of(context);
+    final base = context.soft;
+    final tokens = theme.brightness == Brightness.dark
+        ? base.copyWith(
+            surface: const Color(0xFF161616),
+            surfacePressed: const Color(0xFF222222),
+            border: const Color(0xFF2C2C2C),
+            shadow: const Color(0x00000000),
+          )
+        : base.copyWith(
+            surface: const Color(0xFFFDFDFD),
+            surfacePressed: const Color(0xFFF0F0F0),
+            border: const Color(0xFFFFFFFF),
+            shadow: const Color(0x1A000000),
+            shadowBlur: 30,
+            shadowDy: 8,
+          );
+    return Theme(
+      data: theme.copyWith(extensions: <ThemeExtension<dynamic>>[tokens]),
+      child: child,
+    );
+  }
+
   Widget _softMenu() {
     return SoftCircularButton(
-      icon: Icons.menu_rounded,
+      icon: CupertinoIcons.line_horizontal_3,
       semanticLabel: 'Menu',
       onPressed: widget.onMenu,
       size: ChatTopBar._controlSize,
+      iconSize: _softMenuIconSize,
     );
   }
 
   Widget _softPill() {
-    return SoftIconPill(
-      actions: [
-        SoftIconPillAction(
-          icon: Icons.edit_outlined,
-          semanticLabel: 'New chat',
-          onPressed: widget.onNewChat,
+    return SizedBox.fromSize(
+      size: _glassPillSlot,
+      child: Align(
+        alignment: Alignment.bottomLeft,
+        child: SoftIconPill(
+          // Same 44 + 4 + 44 run as the glass group (`spacing: 4`), so the
+          // icons sit 48 pt apart like the glass ones; with the border it
+          // lands on the glass capsule's measured ~94 pt.
+          horizontalPadding: 0,
+          spacing: 4,
+          iconSize: _softPillIconSize,
+          actions: [
+            SoftIconPillAction(
+              icon: CupertinoIcons.square_pencil,
+              semanticLabel: 'New chat',
+              onPressed: widget.onNewChat,
+            ),
+            SoftIconPillAction(
+              icon: CupertinoIcons.ellipsis,
+              semanticLabel: 'More options',
+              onPressed: widget.onMore,
+            ),
+          ],
         ),
-        SoftIconPillAction(
-          icon: Icons.more_horiz_rounded,
-          semanticLabel: 'More options',
-          onPressed: widget.onMore,
-        ),
-      ],
+      ),
     );
   }
 }
@@ -1512,7 +1630,7 @@ class _ChatScreenState extends State<ChatScreen> {
   /// fires once it settles — but nothing fires during the slide. If the grey
   /// overlay band shows here too, the cause is not the host-page transform
   /// and the swap needs the depth-only trigger instead of this page's
-  /// `_covered || _routeAnimating`.
+  /// `_covered || _routeOver`.
   void _showVoiceSheet() {
     final theme = Theme.of(context);
     CNBottomSheet.show(
@@ -1647,6 +1765,61 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Probe for `pr_probe_entry.dart` (`PROBE=softbar`): the top bar's Liquid
+/// Glass row directly above its soft fallback row, so a screenshot shows
+/// whether the swap changes glyphs or footprint.
+class SoftTopBarCompareProbe extends StatelessWidget {
+  const SoftTopBarCompareProbe({super.key, this.dark = false, this.label = ''});
+
+  final bool dark;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = dark
+        ? const SoftControlTheme.dark()
+        : const SoftControlTheme.light();
+    final caption = TextStyle(fontSize: 12, color: tokens.foreground);
+    // The soft row is the *swapped* liquid bar, not `liquid: false`: that is
+    // the state a sheet puts it in, and the one that has to match.
+    Widget bar({required bool liquid}) => ChatTopBar(
+      debugForceSoft: !liquid,
+      modalBehavior: TopBarModalBehavior.keepGlass,
+      onMenu: () {},
+      onNewChat: () {},
+      onMore: () {},
+    );
+
+    return Theme(
+      data: ThemeData(
+        useMaterial3: true,
+        brightness: dark ? Brightness.dark : Brightness.light,
+        scaffoldBackgroundColor: tokens.background,
+        extensions: <ThemeExtension<dynamic>>[tokens],
+      ),
+      child: Scaffold(
+        backgroundColor: tokens.background,
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            bar(liquid: true),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text('liquid ↑   soft ↓   $label', style: caption),
+            ),
+            // Soft row last: no Flutter content paints above the glass.
+            MediaQuery.removePadding(
+              context: context,
+              removeTop: true,
+              child: bar(liquid: false),
+            ),
+          ],
+        ),
       ),
     );
   }
