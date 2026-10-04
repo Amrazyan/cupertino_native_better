@@ -554,9 +554,7 @@ class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
   }
 
   private func _cnSetInteractiveRecursive(_ view: UIView?, _ interactive: Bool) {
-    guard let view = view else { return }
-    view.isUserInteractionEnabled = interactive
-    for sub in view.subviews { _cnSetInteractiveRecursive(sub, interactive) }
+    view?.cnSetInteractive(interactive)
   }
 
   /// Toggle Issue #29 halo containment on container + hosting view.

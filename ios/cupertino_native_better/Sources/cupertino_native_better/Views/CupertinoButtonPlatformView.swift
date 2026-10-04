@@ -631,9 +631,7 @@ class CupertinoButtonPlatformView: NSObject, FlutterPlatformView {
   func view() -> UIView { container }
 
   private func _cnSetInteractiveRecursive(_ view: UIView?, _ interactive: Bool) {
-    guard let view = view else { return }
-    view.isUserInteractionEnabled = interactive
-    for sub in view.subviews { _cnSetInteractiveRecursive(sub, interactive) }
+    view?.cnSetInteractive(interactive)
   }
 
   /// Issue #40: build a title-text-attributes transformer that applies
