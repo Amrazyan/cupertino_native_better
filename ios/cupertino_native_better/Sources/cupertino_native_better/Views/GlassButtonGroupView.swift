@@ -9,6 +9,20 @@ class GlassButtonGroupViewModel: ObservableObject {
   @Published var spacing: CGFloat = 8.0
   @Published var spacingForGlass: CGFloat = 40.0
 
+  /// Set while a Flutter modal covers this view's route. iOS 26's
+  /// `.glassEffect(.interactive)` paints its press highlight from touches it
+  /// takes at the UIKit layer, so the control lights up under a finger even
+  /// when Flutter's gesture arena has already refused the tap and nothing
+  /// will run. `isUserInteractionEnabled = false` on the container does not
+  /// stop it (see the note on `.allowsHitTesting` in `buttonView(for:)` —
+  /// the effect sits below where that reaches). Dropping `.interactive()`
+  /// from the glass removes the highlight at its source.
+  ///
+  /// Kept out of `GlassButtonData` on purpose: `updateButtons` replaces that
+  /// array wholesale on any rebuild, which would discard the suppression
+  /// while the modal is still up.
+  @Published var suppressInteractiveGlass: Bool = false
+
   func updateButton(at index: Int, with buttonData: GlassButtonData) {
     guard index >= 0 && index < buttons.count else { return }
     buttons[index] = buttonData
@@ -49,7 +63,8 @@ struct GlassButtonGroupSwiftUI: View {
       onPressed: button.isPopup ? {} : button.onPressed,
       glassEffectUnionId: button.glassEffectUnionId,
       glassEffectId: button.glassEffectId,
-      glassEffectInteractive: button.glassEffectInteractive,
+      glassEffectInteractive:
+        button.glassEffectInteractive && !viewModel.suppressInteractiveGlass,
       namespace: namespace,
       config: button.config,
       badgeCount: nil
@@ -527,6 +542,9 @@ class GlassButtonGroupPlatformView: NSObject, FlutterPlatformView {
           NSLog("[CN CNGroup] setInteractive=\(interactive)")
           self._cnSetInteractiveRecursive(self.container, interactive)
           self._cnSetInteractiveRecursive(self.hostingController.view, interactive)
+          // The UIKit flags above stop taps being acted on; they do not stop
+          // the interactive glass painting a press highlight. This does.
+          self.viewModel.suppressInteractiveGlass = !interactive
         }
         result(nil)
       default:

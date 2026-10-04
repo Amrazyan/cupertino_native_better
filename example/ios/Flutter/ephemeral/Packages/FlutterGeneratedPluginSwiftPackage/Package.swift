@@ -15,16 +15,16 @@ let package = Package(
         .library(name: "FlutterGeneratedPluginSwiftPackage", type: .static, targets: ["FlutterGeneratedPluginSwiftPackage"])
     ],
     dependencies: [
-        .package(name: "integration_test", path: "../.packages/integration_test"),
         .package(name: "cupertino_native_better", path: "../.packages/cupertino_native_better"),
+        .package(name: "integration_test", path: "../.packages/integration_test"),
         .package(name: "FlutterFramework", path: "../.packages/FlutterFramework")
     ],
     targets: [
         .target(
             name: "FlutterGeneratedPluginSwiftPackage",
             dependencies: [
-                .product(name: "integration-test", package: "integration_test"),
                 .product(name: "cupertino-native-better", package: "cupertino_native_better"),
+                .product(name: "integration-test", package: "integration_test"),
                 .product(name: "FlutterFramework", package: "FlutterFramework")
             ]
         )

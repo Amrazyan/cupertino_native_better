@@ -38,6 +38,7 @@ import 'demos/pr42_tabbar_iconsize_customicon_test.dart';
 import 'demos/issue33_svg_tabbar_test.dart';
 import 'demos/stack_positioned_tabbar_test.dart';
 import 'demos/tabbar_split_search_clip_test.dart';
+import 'demos/soft_chat_ui_demo.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -169,6 +170,29 @@ class HomePage extends StatelessWidget {
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
+          CupertinoListSection.insetGrouped(
+            header: Text('Real-world screens'),
+            children: [
+              CupertinoListTile(
+                title: Text('Soft chat UI'),
+                leading: CNIcon(
+                  symbol: CNSymbol(
+                    'bubble.left.and.bubble.right',
+                    color: accentColor,
+                  ),
+                ),
+                trailing: CupertinoListTileChevron(),
+                onTap: () {
+                  Navigator.of(context).push(
+                    CupertinoPageRoute(
+                      builder: (_) => const SoftChatUiDemoPage(),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+
           CupertinoListSection.insetGrouped(
             header: Text('Components'),
             children: [

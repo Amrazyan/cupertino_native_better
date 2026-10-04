@@ -129,12 +129,41 @@ mixin ModalHideMixin<T extends StatefulWidget> on State<T> {
           _modalUp = newHide;
         });
       }
-      // TAPPING-FIX REVERT: the native setInteractive channel call and
-      // its caller _applyNativeInteractive are intentionally removed
-      // here. We want to isolate whether the visible blink/rebuild
-      // during sheet open/close is caused by the interaction-guard
-      // wrap or by the position-aware hide path itself.
+      // Restored (the Stack/Listener guard below stays a passthrough).
+      // The blink this was reverted with came from the guard changing the
+      // widget tree's shape, which destroys and recreates the platform
+      // view. This call changes no widgets at all — it sets a property on
+      // a native view that is already mounted — so it cannot reintroduce
+      // that blink, and it is the only thing that stops a native control
+      // reacting to touches while a modal covers the route.
+      if (aboveChanged) _applyNativeInteractive();
     });
+  }
+
+  /// Tells the native view to stop accepting touches while any modal is
+  /// above this widget's route, and to start again once it is gone.
+  ///
+  /// Keyed off [isAnyModalAbove] (depth), not [isHiddenForModal]
+  /// (geometry), and the distinction matters: a control the sheet does not
+  /// cover still must not respond, because Flutter's modal barrier is
+  /// screen-wide. Hiding is about where the sheet is; interaction is about
+  /// whether a modal exists at all.
+  ///
+  /// Without this, a native control keeps its own touch handling under the
+  /// barrier. Flutter's gesture arena still rejects the gesture, so the
+  /// widget's action never runs — but iOS has already drawn its press
+  /// state by then, so an iOS 26 glass control lights up under a finger
+  /// that cannot actually press it.
+  ///
+  /// Silent when the channel does not exist yet: a view created while a
+  /// modal is already up has nothing to suppress, since [_mountDepth]
+  /// means it does not consider that modal to be above it.
+  void _applyNativeInteractive() {
+    final ch = platformViewChannel;
+    if (ch == null) return;
+    ch
+        .invokeMethod('setInteractive', {'interactive': !_modalAbove})
+        .catchError((_) {});
   }
 
   /// Returns a same-sized [SizedBox] placeholder when [isHiddenForModal] is

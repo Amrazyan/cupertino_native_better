@@ -8,8 +8,8 @@ import '../style/sf_symbol.dart';
 import '../style/tab_bar_search_item.dart';
 import '../utils/icon_renderer.dart';
 import '../utils/platform_view_guard.dart';
-import '../utils/version_detector.dart';
 import '../utils/theme_helper.dart';
+import '../utils/version_detector.dart';
 import 'icon.dart';
 
 /// Immutable data describing a single tab bar item.
