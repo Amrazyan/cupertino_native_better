@@ -4,7 +4,7 @@ import SVGKit
 
 class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelegate {
   private let channel: FlutterMethodChannel
-  private let container: UIView
+  private let container: CNWidthObservingView
   private var tabBar: UITabBar?
   private var tabBarLeft: UITabBar?
   private var tabBarRight: UITabBar?
@@ -34,7 +34,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
 
   init(frame: CGRect, viewId: Int64, args: Any?, messenger: FlutterBinaryMessenger) {
     self.channel = FlutterMethodChannel(name: "CupertinoNativeTabBar_\(viewId)", binaryMessenger: messenger)
-    self.container = UIView(frame: frame)
+    self.container = CNWidthObservingView(frame: frame)
 
     var labels: [String] = []
     var symbols: [String] = []
@@ -424,6 +424,18 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
     if let dict = args as? [String: Any] {
       if let ff = dict["labelFontFamily"] as? String, !ff.isEmpty { self.labelFontFamily = ff }
       if let fs = dict["labelFontSize"] as? NSNumber, fs.doubleValue > 0 { self.labelFontSize = CGFloat(truncating: fs) }
+    }
+    // UITabBar measures its item labels when it builds their button views
+    // and does not re-measure them when its width later changes. The
+    // platform view is created at width 0, and a bar rebuilt while its route
+    // is covered (the modal-close recreate, with a page pushed over the tab
+    // bar's route) kept the zero-width layout once shown again: "Ch…" for
+    // the selected item and no label at all on the rest (iOS 26.2; not seen
+    // on 27.0). The one-shot re-assignment in the setup above runs before
+    // the real width arrives, so rebuild the buttons whenever the
+    // container's width actually changes.
+    container.onWidthChange = { [weak self] _ in
+      DispatchQueue.main.async { self?.remeasureItemLabels() }
     }
 channel.setMethodCallHandler { [weak self] call, result in
       guard let self = self else { result(nil); return }
@@ -1063,6 +1075,24 @@ channel.setMethodCallHandler { [weak self] call, result in
 
   func view() -> UIView { container }
 
+  /// Re-assigns every bar's items so UITabBar lays their labels out again at
+  /// the current width, keeping each bar's selection (re-assignment clears it).
+  private func remeasureItemLabels() {
+    for bar in [tabBar, tabBarLeft, tabBarRight].compactMap({ $0 }) {
+      guard let items = bar.items, !items.isEmpty else { continue }
+      let selected = bar.selectedItem.flatMap { items.firstIndex(of: $0) }
+      UIView.performWithoutAnimation {
+        // Through nil: re-assigning the same items keeps the button views
+        // UITabBar already built, labels and all.
+        bar.items = nil
+        bar.items = items
+        if let selected = selected { bar.selectedItem = items[selected] }
+        bar.setNeedsLayout()
+        bar.layoutIfNeeded()
+      }
+    }
+  }
+
   // MARK: - Appearance helpers
 
   /// Builds a UITabBarAppearance with transparent background and optional custom label font.
@@ -1127,3 +1157,18 @@ channel.setMethodCallHandler { [weak self] call, result in
 
 }
 
+
+/// A plain container that reports width changes after layout; see
+/// `CupertinoTabBarPlatformView.remeasureItemLabels`.
+final class CNWidthObservingView: UIView {
+  var onWidthChange: ((CGFloat) -> Void)?
+  private var lastWidth: CGFloat = -1
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    let width = bounds.width
+    guard width > 0, width != lastWidth else { return }
+    lastWidth = width
+    onWidthChange?(width)
+  }
+}
