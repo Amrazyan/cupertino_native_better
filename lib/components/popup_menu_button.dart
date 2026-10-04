@@ -266,12 +266,16 @@ class _CNPopupMenuButtonState extends State<CNPopupMenuButton>
     _pushContainmentIfNeeded();
   }
 
+  /// Issue #36: also contain the halo while a modal covers this widget.
+  @override
+  void didChangeModalCoverage() => _pushContainmentIfNeeded();
+
   void _pushContainmentIfNeeded() {
     final anim = _secondaryRouteAnim;
     final animating =
         anim?.status == AnimationStatus.forward ||
         anim?.status == AnimationStatus.reverse;
-    final active = animating;
+    final active = animating || isCoveredByModal;
     final ch = _channel;
     if (ch == null) return;
     ch.invokeMethod('setTransitioning', {'active': active}).catchError((_) {});

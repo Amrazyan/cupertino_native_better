@@ -128,11 +128,10 @@ class _CNGlassButtonGroupState extends State<CNGlassButtonGroup>
   double? _lastSpacing;
   double? _lastSpacingForGlass;
 
-  // Issue #29 halo containment via setTransitioning.
-  // Driven only by route-transition animations; the modal-up trigger has been
-  // removed in favor of ModalHideMixin (maybeHiddenPlaceholder + native
-  // setInteractive), which handles modal sheets without the visible
-  // clip/shadow blink the legacy trigger caused.
+  // Halo containment via setTransitioning: on while the route animates
+  // (Issue #29) or while a modal covers it (Issue #36). The modal half
+  // comes from ModalHideMixin's `didChangeModalCoverage`, not a listener of
+  // our own — the old one double-fired with the mixin and blinked.
   Animation<double>? _secondaryRouteAnim;
 
   /// Whether we're using widget mode (backward compatibility).
@@ -169,12 +168,15 @@ class _CNGlassButtonGroupState extends State<CNGlassButtonGroup>
 
   void _onSecondaryRouteAnimChanged() => _pushContainmentIfNeeded();
 
+  @override
+  void didChangeModalCoverage() => _pushContainmentIfNeeded();
+
   void _pushContainmentIfNeeded() {
     final anim = _secondaryRouteAnim;
     final animating =
         anim?.status == AnimationStatus.forward ||
         anim?.status == AnimationStatus.reverse;
-    final active = animating;
+    final active = animating || isCoveredByModal;
     final ch = _channel;
     if (ch == null) return;
     ch.invokeMethod('setTransitioning', {'active': active}).catchError((_) {});

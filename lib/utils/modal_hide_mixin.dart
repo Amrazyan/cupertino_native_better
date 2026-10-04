@@ -67,6 +67,12 @@ mixin ModalHideMixin<T extends StatefulWidget> on State<T> {
   /// is true).
   bool get isHiddenForModal => _modalUp && autoHideOnModal;
 
+  /// True iff a modal newer than this widget's host route covers its rect
+  /// (or the sheet's rect is unknown — the same safe fallback hiding uses).
+  /// Independent of [autoHideOnModal]: this is where the sheet is, not
+  /// what the widget does about it.
+  bool get isCoveredByModal => _modalUp;
+
   /// True iff a modal is currently presented above this widget's host
   /// route. Independent of geometry — covers widgets that stay visible
   /// (above the sheet) but should NOT be interactive while a sheet is up.
@@ -137,8 +143,20 @@ mixin ModalHideMixin<T extends StatefulWidget> on State<T> {
       // that blink, and it is the only thing that stops a native control
       // reacting to touches while a modal covers the route.
       if (aboveChanged) _applyNativeInteractive();
+      if (hideChanged) didChangeModalCoverage();
     });
   }
+
+  /// Called after [isCoveredByModal] flips, once the new value is in place.
+  ///
+  /// Glass widgets override it to re-push their `setTransitioning` halo
+  /// containment (Issue #36): a view that stays mounted under a sheet —
+  /// `autoHideOnModal: false` — would otherwise draw its glass halo and
+  /// shadow past its bounds, over the sheet. Geometry-keyed, so a control the
+  /// sheet doesn't reach keeps its full glow, and mount-depth-gated, so a
+  /// control *inside* the sheet is never clipped.
+  @protected
+  void didChangeModalCoverage() {}
 
   /// Tells the native view to stop accepting touches while any modal is
   /// above this widget's route, and to start again once it is gone.

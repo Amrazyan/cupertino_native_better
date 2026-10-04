@@ -293,12 +293,12 @@ class _CNButtonState extends State<CNButton> with ModalHideMixin<CNButton> {
   // no modal) the containment is OFF so the capsule can render its full
   // soft-edge glow and grow with a stretched parent frame.
   Animation<double>? _secondaryRouteAnim;
-  // NOTE: modal-up containment is no longer driven from this widget. The
-  // ModalHideMixin handles modal up/down via maybeHiddenPlaceholder and
-  // the native `setInteractive` call. The legacy `_modalAbove` trigger was
-  // removed because it double-fired with the mixin and caused a visible
-  // blink/resize. Route-transition containment (Issue #29) is still driven
-  // by the secondaryAnimation listener below.
+  // Containment is on while the route animates (Issue #29) or while a modal
+  // is above it (Issue #36). The modal half used to listen to
+  // `anyModalDepth > 0` itself, which double-fired with ModalHideMixin and
+  // also clipped buttons *inside* the sheet; it now comes from the mixin's
+  // `isCoveredByModal` via `didChangeModalCoverage`, so it shares the
+  // mixin's geometry test and mount-depth gate.
 
   bool get _isDark => ThemeHelper.isDark(context);
 
@@ -345,17 +345,17 @@ class _CNButtonState extends State<CNButton> with ModalHideMixin<CNButton> {
     _onSecondaryRouteAnimChanged();
   }
 
-  void _onSecondaryRouteAnimChanged() {
-    final anim = _secondaryRouteAnim;
-    if (anim == null) return;
-    final isAnimating =
-        anim.status == AnimationStatus.forward ||
-        anim.status == AnimationStatus.reverse;
-    _pushContainmentIfNeeded(animating: isAnimating);
-  }
+  void _onSecondaryRouteAnimChanged() => _pushContainmentIfNeeded();
 
-  void _pushContainmentIfNeeded({required bool animating}) {
-    final next = animating;
+  @override
+  void didChangeModalCoverage() => _pushContainmentIfNeeded();
+
+  void _pushContainmentIfNeeded() {
+    final anim = _secondaryRouteAnim;
+    final animating =
+        anim?.status == AnimationStatus.forward ||
+        anim?.status == AnimationStatus.reverse;
+    final next = animating || isCoveredByModal;
     final ch = _channel;
     if (ch == null) return;
     // Fire-and-forget: this is called from a sync listener so we can't await.

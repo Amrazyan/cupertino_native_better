@@ -195,11 +195,10 @@ class _CNFloatingIslandState extends State<CNFloatingIsland>
   CNFloatingIslandController? _internalController;
   bool _isExpanded = false;
 
-  // Issue #29 halo containment state — toggled via setTransitioning on
-  // the native channel while the enclosing route is animating.
-  // Modal-up containment is now handled exclusively by ModalHideMixin
-  // (maybeHiddenPlaceholder + native setInteractive), so the legacy
-  // modal-depth trigger has been removed to avoid a double-fire blink.
+  // Halo containment via setTransitioning: on while the route animates
+  // (Issue #29) or while a modal covers it (Issue #36). The modal half
+  // comes from ModalHideMixin's `didChangeModalCoverage`, not a listener of
+  // our own — the old one double-fired with the mixin and blinked.
   Animation<double>? _secondaryRouteAnim;
 
   CNFloatingIslandController get _controller =>
@@ -244,12 +243,15 @@ class _CNFloatingIslandState extends State<CNFloatingIsland>
 
   void _onSecondaryRouteAnimChanged() => _pushContainmentIfNeeded();
 
+  @override
+  void didChangeModalCoverage() => _pushContainmentIfNeeded();
+
   void _pushContainmentIfNeeded() {
     final anim = _secondaryRouteAnim;
     final animating =
         anim?.status == AnimationStatus.forward ||
         anim?.status == AnimationStatus.reverse;
-    final active = animating;
+    final active = animating || isCoveredByModal;
     final ch = _controller._channel;
     if (ch == null) return;
     ch.invokeMethod('setTransitioning', {'active': active}).catchError((_) {});
